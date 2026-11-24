@@ -1,13 +1,23 @@
 import React, { useState } from 'react';
-import { X, MapPin, Clock, Users, Phone, CheckCircle2, Copy, Check, Send } from 'lucide-react';
+import { X, MapPin, Clock, Users, Phone, CheckCircle2, Copy, Check, Send, ThumbsUp, Shield } from 'lucide-react';
 import { INCIDENT_TYPES, INCIDENT_STATUSES } from '../../data/incidents';
 
-export default function IncidentModal({ incident, onClose, onFocusOnMap }) {
+export default function IncidentModal({
+  incident,
+  onClose,
+  onFocusOnMap,
+  onConfirmOutage,
+  onStatusChange,
+  user,
+}) {
   const [copied, setCopied] = useState(false);
-  const [reportSuccess, setReportSuccess] = useState(false);
-  const [extraInfo, setExtraInfo] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [confirmSuccess, setConfirmSuccess] = useState(false);
 
   if (!incident) return null;
+
+  const incId = incident._id || incident.id;
+  const isOrgOrAdmin = user?.role === 'admin' || user?.role === 'organization' || user?.email?.includes('admin') || user?.email?.includes('org');
 
   const handleCopy = () => {
     navigator.clipboard.writeText(`${incident.district}, ${incident.mahalla}, ${incident.address}`);
@@ -15,14 +25,15 @@ export default function IncidentModal({ incident, onClose, onFocusOnMap }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSendExtra = (e) => {
-    e.preventDefault();
-    if (!extraInfo.trim()) return;
-    setReportSuccess(true);
-    setTimeout(() => {
-      setExtraInfo('');
-      setReportSuccess(false);
-    }, 2500);
+  const handleConfirm = async () => {
+    setConfirming(true);
+    try {
+      await onConfirmOutage(incId);
+      setConfirmSuccess(true);
+      setTimeout(() => setConfirmSuccess(false), 3000);
+    } finally {
+      setConfirming(false);
+    }
   };
 
   const getTypeTitle = (type) => {
@@ -38,7 +49,9 @@ export default function IncidentModal({ incident, onClose, onFocusOnMap }) {
         {/* Modal Top */}
         <div className="modal-top">
           <div>
-            <div className="modal-category">{getTypeTitle(incident.type)}</div>
+            <div className="modal-category">
+              {getTypeTitle(incident.type)} • <span className="mono-id">ID: {incId}</span>
+            </div>
             <h3 className="modal-heading">{incident.mahalla}</h3>
           </div>
           <button className="close-btn" onClick={onClose} aria-label="Закрыть">
@@ -51,7 +64,8 @@ export default function IncidentModal({ incident, onClose, onFocusOnMap }) {
           {/* Status Box */}
           <div className={`status-highlight-box status-${incident.status}`}>
             <div className="status-label">
-              Текущий статус: <strong>
+              Текущий статус:{' '}
+              <strong>
                 {incident.status === INCIDENT_STATUSES.ACTIVE
                   ? 'Отключено (авария / отключение)'
                   : incident.status === INCIDENT_STATUSES.IN_PROGRESS
@@ -59,12 +73,61 @@ export default function IncidentModal({ incident, onClose, onFocusOnMap }) {
                   : 'Подача услуги восстановлена'}
               </strong>
             </div>
-            {incident.reportsCount > 0 && (
-              <div className="status-sub">
-                👥 От жителей поступило <strong>{incident.reportsCount} сообщений</strong> о проблеме по этому адресу.
+
+            {/* Confirmation social proof */}
+            <div className="status-confirm-action-row">
+              <span className="reports-counter-text">
+                👥 От жителей поступило <strong>{incident.reportsCount || 0} подтверждений</strong>.
+              </span>
+              <button
+                className="btn-modal-confirm"
+                disabled={confirming}
+                onClick={handleConfirm}
+              >
+                <ThumbsUp size={14} />
+                <span>{confirming ? 'Отправка...' : 'Подтвердить отключение (+1)'}</span>
+              </button>
+            </div>
+
+            {confirmSuccess && (
+              <div className="confirm-toast-msg">
+                ✅ Спасибо! Ваше подтверждение отправлено в API (POST /api/outages/{incId}/confirm)
               </div>
             )}
           </div>
+
+          {/* Org & Admin Status Control */}
+          {isOrgOrAdmin && (
+            <div className="admin-status-control-box">
+              <div className="control-box-header">
+                <Shield size={16} className="text-blue" />
+                <span>Управление статусом (для служб и администратора):</span>
+              </div>
+              <div className="control-box-body">
+                <span>Изменить статус инцидента через <code>PATCH /api/outages/{incId}/status</code>:</span>
+                <div className="status-btn-group">
+                  <button
+                    className={`status-choice-btn ${incident.status === 'active' ? 'active red' : ''}`}
+                    onClick={() => onStatusChange(incId, 'active')}
+                  >
+                    Отключено
+                  </button>
+                  <button
+                    className={`status-choice-btn ${incident.status === 'in_progress' ? 'active amber' : ''}`}
+                    onClick={() => onStatusChange(incId, 'in_progress')}
+                  >
+                    В работе
+                  </button>
+                  <button
+                    className={`status-choice-btn ${incident.status === 'resolved' ? 'active green' : ''}`}
+                    onClick={() => onStatusChange(incId, 'resolved')}
+                  >
+                    Восстановлено
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Address & Landmark */}
           <div className="info-block">
@@ -107,21 +170,6 @@ export default function IncidentModal({ incident, onClose, onFocusOnMap }) {
             <p className="section-text">{incident.description}</p>
           </div>
 
-          {/* Measures */}
-          {incident.measuresTaken && incident.measuresTaken.length > 0 && (
-            <div className="info-section">
-              <div className="section-title">Принимаемые меры</div>
-              <ul className="measures-bullet-list">
-                {incident.measuresTaken.map((m, idx) => (
-                  <li key={idx}>
-                    <CheckCircle2 size={15} className="text-green" />
-                    <span>{m}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {/* Service contacts */}
           <div className="service-contacts-card">
             <div>
@@ -138,29 +186,6 @@ export default function IncidentModal({ incident, onClose, onFocusOnMap }) {
               <Phone size={15} />
               <span>Позвонить</span>
             </a>
-          </div>
-
-          {/* Citizen confirmation */}
-          <div className="feedback-section">
-            <div className="section-title">У вас тоже нет света/воды поблизости?</div>
-            {reportSuccess ? (
-              <div className="success-feedback">
-                Спасибо! Ваша отметка добавлена на карту SvetaNet.
-              </div>
-            ) : (
-              <form onSubmit={handleSendExtra} className="feedback-form">
-                <input
-                  type="text"
-                  placeholder="Укажите номер дома или соседнюю улицу..."
-                  value={extraInfo}
-                  onChange={(e) => setExtraInfo(e.target.value)}
-                  className="feedback-input"
-                />
-                <button type="submit" className="feedback-submit">
-                  <Send size={14} /> Подтвердить
-                </button>
-              </form>
-            )}
           </div>
         </div>
 

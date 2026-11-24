@@ -1,11 +1,20 @@
 import React from 'react';
-import { Zap, Phone, PlusCircle, Menu, X, Send } from 'lucide-react';
+import { PlusCircle, Menu, X, LogIn, LogOut, Shield, Building2, User, RefreshCw } from 'lucide-react';
 
 export default function Navbar({
   onOpenReportModal,
+  onOpenAuthModal,
+  onOpenCabinetModal,
+  user,
+  onLogout,
+  isApiOnline,
+  onRefreshApi,
   isSidebarOpen,
   onToggleSidebar,
 }) {
+  const isAdmin = user?.role === 'admin' || user?.email === 'admin@netsveta.dev';
+  const isOrg = isAdmin || user?.role === 'organization' || user?.email === 'org@netsveta.dev';
+
   return (
     <header className="svetanet-header">
       <div className="header-left">
@@ -23,20 +32,28 @@ export default function Navbar({
           </div>
           <div className="brand-info">
             <div className="brand-name">
-              WarnTech <span className="brand-tag">Ташкент</span>
+              WarnTech <span className="brand-tag">API:4000</span>
             </div>
-            <div className="brand-desc">Мониторинг отключений света, воды и газа (SvetaNet)</div>
+            <div className="brand-desc">Мониторинг аварий и отключений Ташкента (SvetaNet)</div>
           </div>
         </div>
 
-        <div className="city-pill">
-          <span className="live-bullet"></span>
-          <span>г. Ташкент (Toshkent shahri)</span>
+        {/* API Status Indicator */}
+        <div
+          className={`api-status-badge ${isApiOnline ? 'api-online' : 'api-offline'}`}
+          title={isApiOnline ? 'Подключено к backend API (http://localhost:4000)' : 'Backend API недоступен, активен автономный режим'}
+          onClick={onRefreshApi}
+        >
+          <span className="api-dot"></span>
+          <span className="api-text">
+            {isApiOnline ? 'API Онлайн' : 'API Офлайн'}
+          </span>
+          <RefreshCw size={12} className="api-refresh-icon" />
         </div>
       </div>
 
       <div className="header-right">
-        {/* Hotlines info */}
+        {/* Hotlines bar */}
         <div className="hotlines-bar">
           <span className="hotline-item">РЭС: <strong>1154</strong></span>
           <span className="hotline-sep">•</span>
@@ -44,6 +61,33 @@ export default function Navbar({
           <span className="hotline-sep">•</span>
           <span className="hotline-item">Сув: <strong>1055</strong></span>
         </div>
+
+        {/* User Auth Section */}
+        {user ? (
+          <div className="user-profile-controls">
+            <button className="user-cabinet-btn" onClick={onOpenCabinetModal}>
+              {isAdmin ? (
+                <Shield size={14} className="text-red" />
+              ) : isOrg ? (
+                <Building2 size={14} className="text-blue" />
+              ) : (
+                <User size={14} />
+              )}
+              <span className="user-email-text">{user.email}</span>
+              <span className="user-role-badge">
+                {isAdmin ? 'Админ' : isOrg ? 'Служба' : 'Житель'}
+              </span>
+            </button>
+            <button className="user-logout-btn" onClick={onLogout} title="Выйти из аккаунта">
+              <LogOut size={14} />
+            </button>
+          </div>
+        ) : (
+          <button className="btn-auth-login" onClick={onOpenAuthModal}>
+            <LogIn size={15} />
+            <span>Вход (Служба / Админ)</span>
+          </button>
+        )}
 
         <button className="btn-report-outage" onClick={onOpenReportModal}>
           <PlusCircle size={16} />

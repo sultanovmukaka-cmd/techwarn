@@ -1,5 +1,5 @@
-import React from 'react';
-import { Search, X, MapPin, Clock, Users, Phone, ChevronRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, X, MapPin, Clock, Users, ChevronRight, ThumbsUp } from 'lucide-react';
 import { INCIDENT_TYPES, INCIDENT_STATUSES, TASHKENT_DISTRICTS } from '../../data/incidents';
 
 export default function IncidentSidebar({
@@ -14,11 +14,18 @@ export default function IncidentSidebar({
   onFilterTypeChange,
   selectedDistrict,
   onSelectDistrict,
+  onConfirmOutage,
+  onStatusChange,
+  user,
   isOpen,
 }) {
-  const electricityCount = allIncidents.filter(i => i.type === INCIDENT_TYPES.ELECTRICITY).length;
-  const waterCount = allIncidents.filter(i => i.type === INCIDENT_TYPES.WATER).length;
-  const gasCount = allIncidents.filter(i => i.type === INCIDENT_TYPES.GAS).length;
+  const [confirmingId, setConfirmingId] = useState(null);
+
+  const electricityCount = allIncidents.filter((i) => i.type === INCIDENT_TYPES.ELECTRICITY).length;
+  const waterCount = allIncidents.filter((i) => i.type === INCIDENT_TYPES.WATER).length;
+  const gasCount = allIncidents.filter((i) => i.type === INCIDENT_TYPES.GAS).length;
+
+  const isOrgOrAdmin = user?.role === 'admin' || user?.role === 'organization' || user?.email?.includes('admin') || user?.email?.includes('org');
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -38,6 +45,16 @@ export default function IncidentSidebar({
     if (type === INCIDENT_TYPES.WATER) return '💧';
     if (type === INCIDENT_TYPES.GAS) return '🔥';
     return '⚠️';
+  };
+
+  const handleConfirm = async (e, id) => {
+    e.stopPropagation();
+    setConfirmingId(id);
+    try {
+      await onConfirmOutage(id);
+    } finally {
+      setConfirmingId(null);
+    }
   };
 
   return (
@@ -132,11 +149,12 @@ export default function IncidentSidebar({
           </div>
         ) : (
           incidents.map((inc) => {
-            const isSelected = selectedIncident && selectedIncident.id === inc.id;
+            const incId = inc._id || inc.id;
+            const isSelected = selectedIncident && (selectedIncident.id === incId || selectedIncident._id === incId);
 
             return (
               <div
-                key={inc.id}
+                key={incId}
                 className={`outage-card type-${inc.type} ${isSelected ? 'selected' : ''}`}
                 onClick={() => onSelectIncident(inc)}
               >
@@ -155,24 +173,51 @@ export default function IncidentSidebar({
                   <span>{inc.address}</span>
                 </div>
 
-                {inc.reportsCount > 0 && (
+                <div className="card-social-row">
                   <div className="community-reports-badge">
                     <Users size={12} />
-                    <span>Подтверждено жителями ({inc.reportsCount} сообщ.)</span>
+                    <span>{inc.reportsCount || 0} подтверждений</span>
                   </div>
-                )}
+
+                  {/* POST /api/outages/:id/confirm action button */}
+                  <button
+                    className="btn-confirm-outage"
+                    disabled={confirmingId === incId}
+                    onClick={(e) => handleConfirm(e, incId)}
+                    title="Подтвердить отключение (+1 в базу API)"
+                  >
+                    <ThumbsUp size={12} />
+                    <span>{confirmingId === incId ? '...' : '+1 Тоже нет'}</span>
+                  </button>
+                </div>
 
                 <div className="outage-time-info">
                   <span className="time-item">
-                    <Clock size={12} /> с {inc.reportedAt.split(' ')[1]}
+                    <Clock size={12} /> с {inc.reportedAt.split(' ')[1] || inc.reportedAt}
                   </span>
                   <span className="time-item est-time">
-                    Ориентир: до {inc.estimatedResolution.split(' ')[1]}
+                    Ориентир: до {inc.estimatedResolution.split(' ')[1] || inc.estimatedResolution}
                   </span>
                 </div>
 
+                {/* For Organization & Admin: PATCH status selector */}
+                {isOrgOrAdmin && (
+                  <div className="card-admin-action" onClick={(e) => e.stopPropagation()}>
+                    <span className="admin-label">Статус (PATCH):</span>
+                    <select
+                      className="status-patch-select"
+                      value={inc.status}
+                      onChange={(e) => onStatusChange(incId, e.target.value)}
+                    >
+                      <option value="active">Отключено</option>
+                      <option value="in_progress">В работе</option>
+                      <option value="resolved">Восстановлено</option>
+                    </select>
+                  </div>
+                )}
+
                 <div className="outage-card-footer">
-                  <span className="service-short">{inc.serviceTeam.split('(')[0]}</span>
+                  <span className="service-short">{inc.serviceTeam?.split('(')[0] || 'Служба'}</span>
                   <button
                     className="details-btn"
                     onClick={(e) => {
